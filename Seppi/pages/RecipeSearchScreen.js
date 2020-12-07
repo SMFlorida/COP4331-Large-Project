@@ -108,7 +108,8 @@ const RecipeSearchScreen = ({ navigation }) => {
 			},
 			body: JSON.stringify({
 				search: searchText,
-				filters: filterText
+				filters: filterText,
+				idToken: state.idToken
 			})
 		})
 		.catch((error) => console.error(error));
@@ -587,46 +588,20 @@ const RecipeSearchScreen = ({ navigation }) => {
 		}
 	};
 
-	const FilterOverlay = () => {
-		return (
-			<View>
-				<Modal animationIn='pulse' isVisible={filterVisible}>
-					<View style={styles.filterContainer}>
-						<View style={styles.filterTopBar}>
-							<TouchableOpacity activeOpacity={0.5} style={styles.filterCancelContainer} onPress={toggleFilterVisible}>
-								<Text style={styles.filterCancelText}>BACK</Text>
-							</TouchableOpacity>
-
-							<View style={styles.applyResetContainer}>
-								<TouchableOpacity activeOpacity={0.5} style={styles.filterCancelContainer} onPress={resetFilters}>
-									<Text style={styles.filterCancelText}>RESET</Text>
-								</TouchableOpacity>
-
-								<TouchableOpacity activeOpacity={0.5} style={styles.filterApplyContainer} onPress={applyFilters}>
-									<Text style={styles.filterApplyText}>Apply</Text>
-								</TouchableOpacity>
-							</View>
-						</View>
-
-						{renderFilterScrollView()}
-					</View>
-				</Modal>
-			</View>
-		);
-	};
-
 	const getFavorites = async () => {
 		const response = await fetch(buildPath('getFavorites'), {
 			method: 'POST',
 			headers: {
 				Accept: 'application/json',
 				'Content-Type': 'application/json'
-			}
+			},
+			body: JSON.stringify({
+				idToken: state.idToken
+			})
 		})
 		.catch((error) => console.error(error));
 
 		let status = await response.status;
-		console.log(status);
 
 		if (status === 200)
 		{
@@ -651,6 +626,8 @@ const RecipeSearchScreen = ({ navigation }) => {
 			}
 		}
 
+		currentItem['idToken'] = state.idToken;
+
 		const response = await fetch(buildPath('addFavorite'), {
 			method: 'POST',
 			headers: {
@@ -661,7 +638,6 @@ const RecipeSearchScreen = ({ navigation }) => {
 		}).catch((error) => console.error(error));
 
 		let status = await response.status;
-		console.log(status);
 
 		if (status === 200)
 		{
@@ -693,16 +669,15 @@ const RecipeSearchScreen = ({ navigation }) => {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				uri: currentItem.recipe.uri
+				uri: currentItem.recipe.uri,
+				idToken: state.idToken
 			})
 		}).catch((error) => console.error(error));
 
 		let status = await response.status;
-		console.log(status);
 
 		if (status === 200)
 		{
-			console.log('removed favorite');
 			let json = JSON.parse(await response.text());
 			setFavoritesData(json.favorites);
 			setRecipeVisible(!recipeVisible);
@@ -717,8 +692,7 @@ const RecipeSearchScreen = ({ navigation }) => {
 
 	const RecipeOverlay = () => {
 		return (
-			<View>
-				<Modal style={styles.recipeOverlayContainer} isVisible={recipeVisible}>
+				<Modal backdropTransitionOutTiming={0} style={styles.recipeOverlayContainer} isVisible={recipeVisible}>
 					<ScrollView>
 						<View style={styles.recipeLabelImageContainer}>
 							<Image style={styles.recipeOverlayImage} source={{uri: currentItem.recipe.image}} />
@@ -730,7 +704,7 @@ const RecipeSearchScreen = ({ navigation }) => {
 							<Text style={styles.ingredientLine}>Ingredients:</Text>
 							
 							{(currentItem.recipe.ingredientLines !== undefined) ? 
-							currentItem.recipe.ingredientLines.map((item, index) => <Text key={index} style={styles.ingredientLine}>{index + 1}. {item}</Text>) :
+							currentItem.recipe.ingredientLines.map((item, index) => <Text key={index} style={styles.ingredientLine}>{'\u2B24'}{item}</Text>) :
 							<View></View> }
 						</View>
 					</ScrollView>
@@ -757,7 +731,6 @@ const RecipeSearchScreen = ({ navigation }) => {
 						</TouchableOpacity>
 					</View>
 				</Modal>
-			</View>
 		);
 	};
 
@@ -808,6 +781,27 @@ const RecipeSearchScreen = ({ navigation }) => {
 
 	return (
 		<KeyboardAvoidingView behavior={Platform.OS == "ios" ? "padding" : "height"} style={styles.container}>
+			<Modal backdropTransitionOutTiming={0} animationIn='pulse' isVisible={filterVisible}>
+					<View style={styles.filterContainer}>
+						<View style={styles.filterTopBar}>
+							<TouchableOpacity activeOpacity={0.5} style={styles.filterCancelContainer} onPress={toggleFilterVisible}>
+								<Text style={styles.filterCancelText}>BACK</Text>
+							</TouchableOpacity>
+
+							<View style={styles.applyResetContainer}>
+								<TouchableOpacity activeOpacity={0.5} style={styles.filterCancelContainer} onPress={resetFilters}>
+									<Text style={styles.filterCancelText}>RESET</Text>
+								</TouchableOpacity>
+
+								<TouchableOpacity activeOpacity={0.5} style={styles.filterApplyContainer} onPress={applyFilters}>
+									<Text style={styles.filterApplyText}>Apply</Text>
+								</TouchableOpacity>
+							</View>
+						</View>
+
+						{renderFilterScrollView()}
+					</View>
+				</Modal>
 			<View style={styles.topBar}>
 					<SearchBar 
 						containerStyle={styles.searchBar}
@@ -889,8 +883,6 @@ const RecipeSearchScreen = ({ navigation }) => {
 					/>
 				)}
 			</SafeAreaView>
-
-			<FilterOverlay />
 
 			<RecipeOverlay />
 			

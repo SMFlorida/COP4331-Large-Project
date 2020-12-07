@@ -46,8 +46,6 @@ app.get('/user', (req, res) => {
 })
 
 app.post('/register', (req, res) => {
-
-  res.setHeader('Content-Type', 'application/json');
   if (req.body.name == "")
   {
       return res.status(400).send(JSON.stringify({response:"Need a non empty name"}));
@@ -82,7 +80,6 @@ app.post('/register', (req, res) => {
 
  });
   app.post('/login', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
       if(!res.headersSent) {
       // signs in
       firebase.auth().signInWithEmailAndPassword(req.body.email, req.body.password).then(function() {
@@ -107,10 +104,19 @@ app.post('/register', (req, res) => {
                   }
                   // sends 200 when email is verified.
                   else if(user != null) {
-                      return res.status(200).send({
-                        name: user.displayName,
-                        email: user.email,
-                      });
+                      firebase.auth().currentUser.getIdToken(/* forceRefresh */ true).then(function(idToken) {
+  // Send token to your backend via HTTPS
+  // ...
+  return res.status(200).send({
+    name: user.displayName,
+    email: user.email,
+    idToken: idToken
+  });
+}).catch(function(error) {
+  // Handle error
+});
+
+
                   }
                   // user not signed in
                 } else {
@@ -130,7 +136,6 @@ app.post('/register', (req, res) => {
   });
 
   app.post('/resetPassword', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
       var auth = firebase.auth();
 
     var emailAddress = req.body.email;
@@ -145,7 +150,6 @@ app.post('/register', (req, res) => {
 });
 
   app.post('/signout', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
       firebase.auth().signOut().then(function() {
         // Sign-out successful.
         return res.status(200).send(JSON.stringify({response:"successfully signed out"}));
@@ -156,7 +160,6 @@ app.post('/register', (req, res) => {
 });
 
 app.post('/changeEmail', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
     var user = firebase.auth().currentUser;
     var emailx = req.body.email;
 
@@ -186,7 +189,6 @@ app.post('/changeEmail', (req, res) => {
 });
 
 app.post('/resendEmailVerification', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
   var user = firebase.auth().currentUser;
 
   if (user != null)
@@ -207,17 +209,24 @@ app.post('/resendEmailVerification', (req, res) => {
 });
 
 app.post('/addFavorite', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    var user = firebase.auth().currentUser;
-
-    if (user !== null)
+    if (req.body.idToken == null)
     {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+
       let origString = req.body.recipe.uri;
       let replacementString = '_S';
       let uri =  origString.replace(/\//g, replacementString);
 
       // Add the recipe JSON object to user's favorites list.
-      let userRef = db.collection('users').doc(user.uid);
+      let userRef = db.collection('users').doc(uid);
       await userRef.collection('BookmarkedRecipes').doc(uri).set(req.body);
 
       // Return the newly added favorite JSON.
@@ -231,23 +240,25 @@ app.post('/addFavorite', async (req, res) => {
       else {
         return res.status(200).send(recipeDoc.data());
       }
-    }
-    else
-    {
-      return res.status(400).send(JSON.stringify({response : 'No user'}));
-    }
+
 });
 
 app.post('/removeFavorite', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    var user = firebase.auth().currentUser;
-
-    if (user !== null) {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
       let origString = req.body.uri;
       let replacementString = '_S';
       let uri =  origString.replace(/\//g, replacementString);
 
-      let userRef = db.collection('users').doc(user.uid);
+      let userRef = db.collection('users').doc(uid);
 
       const favoritesRef = userRef.collection('BookmarkedRecipes');
       await favoritesRef.doc(uri).delete();
@@ -260,45 +271,146 @@ app.post('/removeFavorite', async (req, res) => {
       });
 
       return res.status(200).send({favorites : docs});
-    }
-    else {
-      return res.status(400).send({response: 'No user'});
-    }
+
+
 });
 
 app.post('/getFavorites', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    var user = firebase.auth().currentUser;
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
 
-    if (user !== null) {
-      let userRef = db.collection('users').doc(user.uid);
+      let userRef = db.collection('users').doc(uid);
 
+                  let categoriesRef = userRef.collection('IngredientList');
+                  let arr = [];
+                  let json = {};
+
+                  let categories = await categoriesRef.get();
+                  let categoriesArr = [];
+
+                  categories.forEach(category => {
+                    categoriesArr.push(category);
+                  });
+
+                  for (let i = 0; i < categoriesArr.length; ++i) {
+                    let ingredients = await categoriesRef.doc(categoriesArr[i].id).collection('Ingredients').get();
+                    // would check if expired here I guess. If wanted to add that
+                    ingredients.forEach(ingredient => {
+                        let data = ingredient.data();
+                        let expiration = new Date(data.expiration).getTime();
+                        let date = Date.now();
+                        let days = Math.floor((expiration - date) / (1000 * 3600 * 24)) + 1;
+                        if (days >= 0) {
+                          arr.push(ingredient.data().ingredient);
+                        }
+                    });
+
+                  }
+                  console.log(arr);
       const favoritesRef = userRef.collection('BookmarkedRecipes');
       const favoritesDocs = await favoritesRef.get();
       let docs = [];
       favoritesDocs.forEach(doc => {
+          array2 = []
+              array1 = []
+              match = []
+              not = []
+              var ratio = 0;
+              var total = 0;
+              for (let j = 0; j < doc.data().recipe.ingredients.length; j++)
+              {
+                  var y = 0;
+                  for (let k = 0; k < arr.length; k++)
+                  {
+                      if (arr[k].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"") == doc.data().recipe.ingredients[j].food.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"") || arr[k].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").concat("s") == doc.data().recipe.ingredients[j].food.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,""))
+                      {
+                          y = 1;
+                          ratio++;
+                          total++;
+                          match.push(doc.data().recipe.ingredients[j].food)
+                      }
+                  }
+                  total++;
+                  if (y == 0)
+                  {
+                      not.push(doc.data().recipe.ingredients[j].food)
+                  }
+                  //array1.push(data.hits[i].recipe.ingredients[j].food)
+              }
+              console.log(doc.data().recipe.match)
+              console.log(match)
+              ratio = ratio / total
+              recipe = doc.data().recipe;
+              recipe.match = match
+              recipe.not = not;
+              recipe.ratio = ratio;
+              let origString = doc.data().recipe.uri;
+              let replacementString = '_S';
+              let uri =  origString.replace(/\//g, replacementString);
+
+              userRef.collection('BookmarkedRecipes').doc(uri).update({recipe: recipe});
+
+      });
+      favoritesDocs.forEach(doc => {
+
         docs.push(doc.data());
       });
 
       return res.status(200).send({favorites : docs});
-    }
-    else {
-      return res.status(400).send(JSON.stringify({response: 'No user'}));
-    }
+
 });
 
 app.post('/searchRecipe', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    var user = firebase.auth().currentUser;
-
-    if (user === null) {
-      return res.status(400).send({response: 'No User'});
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
     }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
 
-    let userRef = db.collection('users').doc(user.uid);
+
+    let userRef = db.collection('users').doc(uid);
     const favoritesRef = userRef.collection('BookmarkedRecipes');
     const favoritesDocs = await favoritesRef.get();
 
+                let categoriesRef = userRef.collection('IngredientList');
+                let arr = [];
+                let json = {};
+
+                let categories = await categoriesRef.get();
+                let categoriesArr = [];
+
+                categories.forEach(category => {
+                  categoriesArr.push(category);
+                });
+
+                for (let i = 0; i < categoriesArr.length; ++i) {
+                  let ingredients = await categoriesRef.doc(categoriesArr[i].id).collection('Ingredients').get();
+                  // would check if expired here I guess. If wanted to add that
+                  ingredients.forEach(ingredient => {
+                      let data = ingredient.data();
+                      let expiration = new Date(data.expiration).getTime();
+                      let date = Date.now();
+                      let days = Math.floor((expiration - date) / (1000 * 3600 * 24)) + 1;
+                      if (days >= 0) {
+                        arr.push(ingredient.data().ingredient);
+                      }
+                  });
+
+                }
+                console.log(arr)
     // Add the favorited URI's to a set.
     let docSet = new Set();
     favoritesDocs.forEach(doc => {
@@ -311,7 +423,26 @@ app.post('/searchRecipe', async (req, res) => {
 
     if (req.body.filters !== undefined && req.body.filters !== null)
       url += '&' + req.body.filters;
-
+    var from = 0;
+    var to = 10;
+    if (req.body.from != null)
+    {
+        from = req.body.from;
+    }
+    if (req.body.to != null)
+    {
+        to = req.body.from;
+    }
+    /* or if you want to send page and size of each page. where page 0 is starting.
+    page = req.body.page;
+    size = req.body.size;
+    and then you can do
+    url += '&from=' + page * size;
+    var next = page + 1;
+    url += '&to=' + next * size;
+    */
+    url += '&from=' + from;
+    url += '&to=' + to;
     url += '&app_id='
     url += app_id
     url += "&app_key="
@@ -325,19 +456,48 @@ app.post('/searchRecipe', async (req, res) => {
       _res.on("end", function () {
             // Process the search data and figure out which recipes are bookmarked by the user.
             let data = JSON.parse(x);
-            
+
             // If data doesn't exist return.
             if (data === undefined || data.hits === undefined) {
               return res.status(400).send({response: 'No searches returned'});
             }
-
+            array2 = []
             for (let i = 0; i < data.hits.length; ++i) {
+                array1 = []
+                match = []
+                not = []
+                var ratio = 0;
+                var total = 0;
+                for (let j = 0; j < data.hits[i].recipe.ingredients.length; j++)
+                {
+                    var y = 0;
+                    for (let k = 0; k < arr.length; k++)
+                    {
+                        if (arr[k].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"") == data.hits[i].recipe.ingredients[j].food.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"") || arr[k].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").concat("s") == data.hits[i].recipe.ingredients[j].food.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,""))
+                        {
+                            y = 1;
+                            ratio++;
+                            total++;
+                            match.push(data.hits[i].recipe.ingredients[j].food)
+                        }
+                    }
+                    total++;
+                    if (y == 0)
+                    {
+                        not.push(data.hits[i].recipe.ingredients[j].food)
+                    }
+                    //array1.push(data.hits[i].recipe.ingredients[j].food)
+                }
+                data.hits[i].recipe.match = match
+                data.hits[i].recipe.not = not
+                data.hits[i].recipe.ratio = ratio / total
+                array2.push(array1)
               if (docSet.has(data.hits[i].recipe.uri)) {
                 data.hits[i].bookmarked = true;
               }
             }
 
-            return res.status(200).send(data);
+            return res.status(200).send({hits: data.hits});
         });
 
     }).on('error', (e) => {
@@ -346,7 +506,6 @@ app.post('/searchRecipe', async (req, res) => {
 });
 
 app.post('/userInfo', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
       firebase.auth().onAuthStateChanged(function(user) {
       if (user) {
           console.log(user.displayName);
@@ -361,10 +520,12 @@ app.post('/userInfo', (req, res) => {
 });
 
 app.post('/userSet', (req, res) => {
-
-
-    // Add a new document in collection "cities" with ID 'LA'
     var user = firebase.auth().currentUser;
+
+    if (user === null) {
+      return res.status(400).send({response: "No user logged in."});
+    }
+
     const res1 = db.collection('users').doc(user.uid)
               .set({
                   Allergies: req.body.allergies,
@@ -375,46 +536,509 @@ app.post('/userSet', (req, res) => {
     return res.status(200).send(JSON.stringify({response:"gottem"}));
 });
 
+app.post('/addIngredient', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+    if (req.body.category === undefined) {
+      return res.status(400).send({response: "category field is required."});
+    }
+    else if (req.body.ingredient === undefined) {
+      return res.status(400).send({response: "ingredient field is required."});
+    }
 
+    let userRef = db.collection('users').doc(uid);
 
-app.post('/addIngredient', (req, res) => {
+    userRef.collection('IngredientList').doc(req.body.category).set({
+      category: req.body.category
+    });
 
+    let ingredientRef = userRef.collection('IngredientList').doc(req.body.category).collection('Ingredients').doc(req.body.ingredient);
+    const currDoc = await ingredientRef.get();
+    if (currDoc.exists)
+        return res.status(401).send({response: "Ingredient already exists!"});
 
-    // Add a new document in collection "cities" with ID 'LA'
-    var user = firebase.auth().currentUser;
-    const res1 = db.collection('users').doc(user.uid).collection('IngredientList').doc(req.body.Ingredient)
-              .set({
-                  Ingredient: req.body.Ingredient,
-                  Amount: req.body.Amount,
-                  ExpirationDate: req.body.Expiration
-              });
-    console.log(res1);
-    return res.status(200).send(JSON.stringify({response:"Success"}));
+    let amount = req.body.amount;
+    let expiration = req.body.expiration;
+    if (amount === undefined)
+      amount = '1';
+    if (expiration === undefined || expiration.trim().length === 0)
+      expiration = 'No Expiration';
+
+    ingredientRef.set({
+      ingredient: req.body.ingredient,
+      category: req.body.category,
+      amount: amount,
+      expiration: expiration,
+    });
+
+    return res.status(200).send({response : "Added ingredient to database."});
 });
 
-app.post('/getIngredients', (req, res) => {
-            var user = firebase.auth().currentUser;
+app.post('/removeIngredient', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+
+     if (req.body.category === undefined) {
+      return res.status(400).send({response: "category field is required."});
+    }
+    else if (req.body.ingredient === undefined) {
+      return res.status(400).send({response: "ingredient field is required."});
+    }
+
+    let userRef = db.collection('users').doc(uid);
+
+    let ingredientRef = userRef.collection('IngredientList').doc(req.body.category)
+                        .collection('Ingredients').doc(req.body.ingredient);
+
+    const currDoc = await ingredientRef.get();
+    if (!currDoc.exists)
+        return res.status(401).send({response: "Ingredient doesn't exist!"});
+
+    await ingredientRef.delete();
+
+    return res.status(200).send({response: "Deleted Ingredient."});
+});
+
+app.post('/editIngredient', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+    if (req.body.category === undefined) {
+      return res.status(400).send({response: "category field is required."});
+    }
+    else if (req.body.ingredient === undefined) {
+      return res.status(400).send({response: "ingredient field is required."});
+    }
+    else if (req.body.expiration === undefined) {
+      return res.status(400).send({response: "expiration field is required"});
+    }
+
+    let userRef = db.collection('users').doc(uid);
+
+    let ingredientRef = userRef.collection('IngredientList').doc(req.body.category)
+                        .collection('Ingredients').doc(req.body.ingredient);
+
+    let ingredient = await ingredientRef.get();
+
+    if (!ingredient.exists)
+        return res.status(400).send({response: "Ingredient doesn't exist."});
+
+    let newIngredient = req.body.newIngredient;
+
+    if (newIngredient === undefined)
+      newIngredient = req.body.ingredient;
+
+    let newRef = userRef.collection('IngredientList').doc(req.body.category)
+                 .collection('Ingredients').doc(newIngredient);
+
+    let newIngredientDoc = await newRef.get();
+    if (newIngredientDoc.exists && req.body.ingredient !== newIngredient)
+      return res.status(401).send({response: "Ingredient name already exists for this category."});
+
+      await ingredientRef.delete();
+
+      newRef.set({
+        ingredient: newIngredient,
+        category: req.body.category,
+        expiration: req.body.expiration,
+      });
+
+    return res.status(200).send({response: "Edited ingredient."});
+});
+
+app.post('/addCategory', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+
+    if (req.body.category === undefined) {
+      return res.status(400).send({response: "category field is required."});
+    }
+
+    let userRef = db.collection('users').doc(uid);
+    let categoryRef = userRef.collection('IngredientList').doc(req.body.category);
+
+    const currDoc = await categoryRef.get();
+    if (currDoc.exists)
+        return res.status(401).send({response: "Category already exists!"});
+
+    categoryRef.set({
+      category: req.body.category
+    });
+
+    categoryRef.collection('Ingredients');
+
+    return res.status(200).send({response: "Added category."});
+});
+
+
+
+app.post('/removeCategory', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+    if (req.body.category === undefined) {
+      return res.status(400).send({response: "category field is required."});
+    }
+
+    let userRef = db.collection('users').doc(uid);
+    let categoryRef = userRef.collection('IngredientList').doc(req.body.category);
+
+    // Get all the ingredient documents and delete them in the collection.
+    const ingredients = await categoryRef.collection('Ingredients').get();
+    ingredients.forEach(ingredient => {
+      ingredient.ref.delete();
+    });
+
+    // Delete the category document.
+    await categoryRef.delete();
+
+    return res.status(200).send({response: 'Deleted category'});
+});
+
+app.post('/getCategories', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+    let userRef = db.collection('users').doc(uid);
+    let categoriesRef = userRef.collection('IngredientList');
+    let arr = [];
+    let json = {};
+
+    let categories = await categoriesRef.get();
+    let categoriesArr = [];
+
+    categories.forEach(category => {
+      categoriesArr.push(category);
+    });
+
+    for (let i = 0; i < categoriesArr.length; ++i) {
+      let ingredients = await categoriesRef.doc(categoriesArr[i].id).collection('Ingredients').get();
+
+      ingredients.forEach(ingredient => {
+        arr.push(ingredient.data());
+      });
+
+      json[categoriesArr[i].id] = arr;
+      arr = [];
+    }
+
+    return res.status(200).send({categories : json});
+});
+
+app.post('/deleteIngredient', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
             var array = [];
-            var res1 = db.collection("users").doc(user.uid).collection("IngredientList").get()
+            var res1 = await db.collection("users").doc(uid).collection("IngredientList").doc(req.body.Ingredient).delete();
+            return res.status(200).send(JSON.stringify({response:"Deleted"}));
+});
+
+
+app.post('/getGrocery', async(req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+            var array = [];
+            var numChecked = 0;
+            var res1 = db.collection("users").doc(uid).collection("GroceryList").get()
             .then(function(querySnapshot) {
                 querySnapshot.forEach(function(doc) {
                     // doc.data() is never undefined for query doc snapshots
                     var data = doc.data();
-                    var obj = [{Ingredients: data.Ingredients}]
-                    array.push(obj);
+                    var myId = doc.id;
+                    const data1 = {
+                        id: myId
+                    };
 
+                    var obj = Object.assign(data, data1);
+
+                    if (obj.check)
+                      numChecked++;
+
+                    array.push(obj)
                 });
-                return res.status(200).send(JSON.stringify({response:array}));
+
+                return res.status(200).send(JSON.stringify({response:array, numChecked: numChecked}));
             })
             .catch(function(error) {
                 console.log("Error getting documents: ", error);
+                return res.status(400).send(JSON.stringify({response: error}));
             });
 
 });
 
-app.post('/getUser', (req, res) => {
-            var user = firebase.auth().currentUser;
-            db.collection("users").where("UID", "==", user.uid)
+app.post('/deleteGrocery', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+            if (req.body.id === undefined) {
+              return res.status(400).send({response: "id is required"});
+            }
+
+            var array = [];
+            var res1 = await db.collection("users").doc(uid).collection("GroceryList").doc(req.body.id).delete();
+            return res.status(200).send(JSON.stringify({response:"Deleted"}));
+
+});
+
+app.post('/addGrocery', async (req, res) => {
+    // Checked field
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+    const res1 = await db.collection('users').doc(uid).collection('GroceryList').doc()
+              .set({
+                  ingredient: req.body.ingredient,
+                  note: req.body.note,
+                  check: false
+              });
+    return res.status(200).send(JSON.stringify({response:"Success"}));
+});
+
+app.post('/addGroceryArray', async (req, res) => {
+    // Checked field
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+    for (var i = 0; i < req.body.grocery.length; i++)
+    {
+        const res1 = await db.collection('users').doc(uid).collection('GroceryList').doc()
+                  .set({
+                      ingredient: req.body.grocery[i],
+                      note: "For recipe: " + req.body.recipe,
+                      check: 0
+                  });
+    }
+
+    return res.status(200).send(JSON.stringify({response:"Success"}));
+});
+
+app.post('/updateGrocery', async (req, res) => {
+    const data1 = {
+        ingredient: req.body.ingredient,
+        note: req.body.note,
+        check: req.body.check
+    };
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+    if (req.body.note === undefined) {
+      return res.status(400).send({response: "note field is required."});
+    }
+    else if (req.body.ingredient === undefined) {
+      return res.status(400).send({response: "ingredient field is required."});
+    }
+    else if (req.body.check === undefined) {
+      return res.status(400).send({response: "check field is required"});
+    }
+    else if (req.body.id === undefined) {
+      return res.status(400).send({response: "id field is required"});
+    }
+
+    var docref = await db.collection("users").doc(uid).collection("GroceryList").doc(req.body.id).update(data1);
+    return res.status(200).send(JSON.stringify({response:"Updated"}));
+});
+
+
+app.post('/lookupBarcode', async(req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+    if (req.body.code === undefined) {
+      return res.status(400).send({response: "code field is required."});
+    }
+
+    var apikey = process.env.FOOD_API_KEY
+    var app_id = process.env.FOOD_APP_ID
+    var url = 'https://api.edamam.com/api/food-database/v2/parser?upc=' + req.body.code;
+
+    url += '&app_id='
+    url += app_id
+    url += "&app_key="
+    url += apikey
+    const https = require('https');
+    var x = "";
+
+    https.get(url, (_res) => {
+      _res.on('data', (d) => {
+        x += d;
+      });
+      _res.on("end", function () {
+            let data = JSON.parse(x);
+
+            // If data doesn't exist return.
+            if (data === undefined) {
+              return res.status(400).send({response: 'No data found.'});
+            }
+            else if (data.error === "not_found") {
+              return res.status(401).send({response: data.error});
+            }
+
+            return res.status(200).send(data);
+      });
+
+    }).on('error', (e) => {
+      console.error(e);
+      return res.status(400).send({response: e});
+    });
+});
+
+app.post('/getExpiringIngredients', async (req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+    let userRef = db.collection('users').doc(uid);
+    let categoriesRef = userRef.collection('IngredientList');
+    let categories = await categoriesRef.get();
+    let categoriesArr = [];
+    let arr = [];
+
+    categories.forEach(category => {
+      categoriesArr.push(category);
+    });
+
+    for (let i = 0; i < categoriesArr.length; ++i) {
+      let ingredients = await categoriesRef.doc(categoriesArr[i].id).collection('Ingredients').get();
+
+      ingredients.forEach(ingredient => {
+        let data = ingredient.data();
+        let expiration = new Date(data.expiration).getTime();
+        let date = Date.now();
+        let days = Math.floor((expiration - date) / (1000 * 3600 * 24)) + 1;
+
+        if (days <= 0 || (days > 0 && days <= 5)) {
+          data['daysExpired'] = days;
+          arr.push(data);
+        }
+      });
+    }
+
+    return res.status(200).send({expiring: arr});
+});
+
+app.post('/getUser', async(req, res) => {
+    if (req.body.idToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    var decodedToken = await firebaseAdminSdk.auth().verifyIdToken(req.body.idToken);
+    if (decodedToken == null)
+    {
+        return res.status(400).send(JSON.stringify({response : 'No user'}));
+    }
+    const uid = decodedToken.uid;
+
+            db.collection("users").where("UID", "==", uid)
                     .get()
                     .then(function(querySnapshot) {
                         querySnapshot.forEach(function(doc) {
@@ -432,38 +1056,21 @@ app.post('/getUser', (req, res) => {
 });
 
 app.post('/changeDisplayName', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  firebase.auth().onAuthStateChanged(function(user) {
-    if (user) {
-      user.updateProfile({
-        displayName: req.body.name,
-      }).then(function() {
-        // Profile updated successfully!
-        return res.status(200).send({name: user.displayName});
-      })
-      .catch(function(error) {
-        return res.status(400).send(JSON.stringify({response:error}));
-      });
-    }
-    else {
-      return res.status(400).send({response: "User not logged in."});
-    }
-  });
-});
+  var user = firebase.auth().currentUser;
 
-app.post('/userInfo', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-      firebase.auth().onAuthStateChanged(function(user) {
-      if (user) {
-          console.log(user.displayName);
-          // eventually an array if needed
-          return res.status(200).send(JSON.stringify({response:user.displayName}));
-        // User is signed in.
-      } else {
-          return res.status(400).send(JSON.stringify({response:"Not logged in"}));
-        // No user is signed in.
-      }
-    });
+  if (user === null) {
+    return res.status(400).send({response: "No user logged in."});
+  }
+
+  user.updateProfile({
+    displayName: req.body.name,
+  }).then(function() {
+    // Profile updated successfully!
+    return res.status(200).send({name: user.displayName});
+  })
+  .catch(function(error) {
+    return res.status(400).send(JSON.stringify({response:error}));
+  });
 
 });
 
@@ -517,6 +1124,8 @@ router.route('/signout')
 router.route('/resetPassword')
     .post();
 
-app.listen(port, () => {
-		console.log(`Server is running on port: ${port}`);
+const server = app.listen(port, () => {
+      console.log(`Server is running on port: ${port}`);
 });
+
+module.exports = server;

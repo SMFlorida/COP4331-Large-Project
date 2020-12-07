@@ -26,7 +26,78 @@ export function DrawerContent(props) {
     const paperTheme = useTheme();
 
     const { signOut } = React.useContext(AuthContext);
-	const [state, setState] = useContext(UserContext);
+    const [state, setState] = useContext(UserContext);
+
+    const fetchIngredients = async () => {
+		const response = await fetch(buildPath('getCategories'), {
+			method: 'POST',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                idToken: state.idToken
+            })
+		}).catch(error => console.error(error));
+
+		let status = await response.status;
+
+		if (status !== 200) {
+			console.log('Could not fetch ingredients for categories.');
+			return;
+		}
+
+		let json = JSON.parse(await response.text());
+		console.log(Object.entries(json.categories));
+		let categoriesJson = json.categories;
+		setState(state => ({ ...state, categories : categoriesJson}));
+    };
+
+    const fetchExpiring = async () => {
+        const response = await fetch(buildPath('getExpiringIngredients'), {
+			method: 'POST',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json'
+			},
+            body: JSON.stringify({
+                idToken: state.idToken
+            })
+		}).catch(error => console.error(error));
+
+		let status = await response.status;
+		
+		if (status !== 200) {
+			console.log('Could not fetch expiring ingredients.');
+			return;
+		}
+
+		let json = JSON.parse(await response.text());
+		setState(state => ({ ...state, expiring: json.expiring}));
+    };
+
+    const fetchGroceries = async () => {
+		const response = await fetch(buildPath('getGrocery'), {
+			method: 'POST',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json'
+			},
+            body: JSON.stringify({
+                idToken: state.idToken
+            })
+		}).catch(error => console.error(error));
+
+		let status = await response.status;
+		
+		if (status !== 200) {
+			console.log('Could not fetch groceries.');
+			return;
+		}
+
+		let json = JSON.parse(await response.text());
+		setState(state => ({ ...state, list: json}));
+	};
 
     return(
         <View style={{flex:1}}>
@@ -66,7 +137,11 @@ export function DrawerContent(props) {
                                 />
                             )}
                             label="Pantry"
-                            onPress={() => {console.log('pantry')}}
+                            onPress={() => {
+                                fetchIngredients();
+                                fetchExpiring();
+                                props.navigation.navigate('Pantry');
+                            }}
                         />
                         <DrawerItem 
                             icon={({color, size}) => (
@@ -76,8 +151,11 @@ export function DrawerContent(props) {
                                 size={size}
                                 />
                             )}
-                            label="Grocery Lists"
-                            onPress={() => {console.log('lists')}}
+                            label="Grocery List"
+                            onPress={() => {
+                                fetchGroceries();
+                                props.navigation.navigate('Grocery List');
+                            }}
                         />
                         <DrawerItem 
                             icon={({color, size}) => (
